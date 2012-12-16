@@ -85,7 +85,8 @@ typedef struct CCC_chunk {
 	int32_t		ccc_vdy;
 	int32_t		ccc_ddx;
 	int32_t		ccc_ddy;
-	uint32_t	ccc_PPMPC;
+	uint16_t	ccc_PPMP1;
+	uint16_t	ccc_PPMP0;
 	uint32_t	ccc_PRE0;	/* Sprite Preamble Word 0 */
 	uint32_t	ccc_PRE1;	/* Sprite Preamble Word 1 */
 
@@ -158,7 +159,7 @@ typedef struct CCC_chunk {
 #define	CCB_NOBLK_100			0
 #define	CCB_NOBLK_000			1
 
-#define	CCB_PLUTA_MASK			3:0
+#define	CCB_PLUTA			3:0
 
 /* === Cel first preamble word flags === */
 #define PRE0_LITERAL			31:31
@@ -203,6 +204,91 @@ typedef struct CCC_chunk {
 #define PRE1_WOFFSET_PREFETCH		2
 /* Subtract this value from the actual pixel count */
 #define PRE1_TLHPCNT_PREFETCH		1
+
+
+/* === PPMPC control word flags === */
+/* You compose a PPMP value by building up PPMPC definitions and then
+ * using the PPMP_0_SHIFT or PPMP_1_SHIFT values to build up the
+ * value to be used for the CCB's PPMP
+ */
+
+/* These define the shifts required to get your PPMPC value into either
+ * the 0 half or the 1 half of the PPMP
+ */
+#define	PPMP_0_SHIFT 0
+#define	PPMP_1_SHIFT 16
+
+#define	PPMPC_1S			15:15	//  0x00008000
+#define	PPMPC_1S_PDC			0	//   0x00000000
+#define	PPMPC_1S_CFBD			1	//  0x00008000
+
+#define	PPMPC_MS			14:13	//  0x00006000
+#define PPMPC_MS_CCB			0	//   0x00000000
+#define PPMPC_MS_PIN			1	//   0x00002000
+#define PPMPC_MS_PDC			2	//   0x00004000
+#define PPMPC_MS_PDC_MFONLY		3	//   0x00006000
+
+#define	PPMPC_MF			12:10	//  0x00001C00
+#define	PPMPC_MF_1			0	//   0x00000000
+#define	PPMPC_MF_2			1	//   0x00000400
+#define	PPMPC_MF_3			2	//   0x00000800
+#define	PPMPC_MF_4			3	//   0x00000C00
+#define	PPMPC_MF_5			4	//   0x00001000
+#define	PPMPC_MF_6			5	//   0x00001400
+#define	PPMPC_MF_7			6	//   0x00001800
+#define	PPMPC_MF_8			7	//   0x00001C00
+
+#define	PPMPC_SF			9:8	//  0x00000300
+#define	PPMPC_SF_16			0	//   0x00000000
+#define	PPMPC_SF_2			1	//   0x00000100
+#define	PPMPC_SF_4			2	//   0x00000200
+#define	PPMPC_SF_8			3	//   0x00000300
+
+#define	PPMPC_2S			7:6	//  0x000000C0
+#define	PPMPC_2S_ZERO			0	//   0x00000000
+#define	PPMPC_2S_CCB			1	//   0x00000040
+#define	PPMPC_2S_CFBD			2	//   0x00000080
+#define	PPMPC_2S_PDC			3	//   0x000000C0
+
+#define	PPMPC_AVSDV			5:4	//  0x0000003E
+#define	PPMPC_AVSDV_1			0	//   0x00000000
+#define	PPMPC_AVSDV_2			1	//   0x00000010
+#define	PPMPC_AVSDV_4			2	//   0x00000020
+#define	PPMPC_AVSDV_PDC			3	//   0x00000030
+
+#define	PPMPC_AVWRAP			3:3	//  0x00000008
+#define	PPMPC_AVWRAP_CLIP		0
+#define	PPMPC_AVWRAP_WRAP		1
+
+#define	PPMPC_AV2SSEX			2:2	//  0x00000004	/*  Sign-EXtend, okay?  */
+#define	PPMPC_AV2SINVERT		1:1	//  0x00000002
+
+#define	PPMPC_2D			0:0	//  0x00000001
+#define	PPMPC_2D_1			0	//   0x00000000
+#define	PPMPC_2D_2			1	//   0x00000001
+
+#define	PPMPC_MS_SHIFT  13
+#define	PPMPC_MF_SHIFT  10
+#define	PPMPC_SF_SHIFT  8
+#define	PPMPC_2S_SHIFT  6
+#define	PPMPC_AV_SHIFT  1
+
+/* PPMPC_1S_MASK definitions */
+
+/* PPMPC_MS_MASK definitions */
+
+/* PPMPC_MF_MASK definitions */
+
+/* PPMPC_SF_MASK definitions */
+
+/* PPMPC_2S_MASK definitions */
+
+/* PPMPC_AV_MASK definitions (only valid if CCB_USEAV set in ccb_Flags) */
+
+#define	PPMPC_AV_SF2_MASK	0x00000030
+
+
+/* PPMPC_2D_MASK definitions */
 
 
 #define	PACK_EOL			0

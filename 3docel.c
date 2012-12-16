@@ -25,6 +25,15 @@
 /***************************************************************************
  * Structure definitions.
  */
+typedef struct pxdata {
+	uint16_t		pel;	/*  Raw value from cel data  */
+	uint16_t		p1555;	/*  After decoding through PLUT.  */
+	uint8_t			p;	/*  P-mode value  */
+	uint8_t			mr, mg, mb;	/*  Multiply value.  */
+	uint8_t			dr, dg, db;	/*  Divide value.  */
+	uint8_t			equ_alpha;	/*  Equivalent alpha value.  */
+} pxdata;
+
 typedef struct chunkdata {
 	uint8_t			*base;
 	uint32_t		size;
@@ -49,6 +58,7 @@ typedef struct celinfo {
 	uint8_t			packed;
 	uint8_t			indexed;	/*  "Coded" in 3DO parlance */
 	uint8_t			rep8;
+	uint8_t			pluta;		/*  Pre-shifted  */
 } celinfo;
 
 
@@ -68,6 +78,7 @@ typedef struct decode_context {
 	struct chunkdata	cd;
 	struct pstore_context	pstore;
 	GError			**error;
+	int			framenum;
 } decode_context;
 
 
@@ -78,6 +89,9 @@ struct cccflag {
 #define	DEFFLAG(name)	{ MASKEXPAND (name), #name }
 
 #define	NUMOF(array)	(sizeof (array) / sizeof (*(array)))
+
+
+static int decode_cel (struct decode_context *ctx);
 
 
 /***************************************************************************
@@ -344,7 +358,8 @@ struct celfile		*cf
 	ccc->ccc_vdy		= be32toh (ccc->ccc_vdy);
 	ccc->ccc_ddx		= be32toh (ccc->ccc_ddx);
 	ccc->ccc_ddy		= be32toh (ccc->ccc_ddy);
-	ccc->ccc_PPMPC		= be32toh (ccc->ccc_PPMPC);
+	ccc->ccc_PPMP1		= be16toh (ccc->ccc_PPMP1);
+	ccc->ccc_PPMP0		= be16toh (ccc->ccc_PPMP0);
 	ccc->ccc_PRE0		= be32toh (ccc->ccc_PRE0);
 	ccc->ccc_PRE1		= be32toh (ccc->ccc_PRE1);
 	ccc->ccc_Width		= be32toh (ccc->ccc_Width);
@@ -426,28 +441,44 @@ parse_file (struct decode_context *ctx, struct celfile *cf)
 	chunk_header	ckhdr;
 	int		e = 0;
 	uint8_t		*pdat;
-	uint8_t		first_chunk;
+	uint8_t		seen_first_chunk = 0;
 
-	first_chunk = 1;
 	while (!(e = read_chunk_header (&ckhdr, cf))) {
-		if (first_chunk) {
-			if (ckhdr.ID != CHUNK_CCB) {
+		if (!seen_first_chunk) {
+			switch (ckhdr.ID) {
+			case CHUNK_CCB:
+				ctx->framenum = 0;
+				break;
+
+			case CHUNK_ANIM:
+				ctx->framenum = 1;
+				break;
+
+			default:
 				g_set_error
 				 (cf->error, G_FILE_ERROR, G_FILE_ERROR_FAILED,
 				  "%s: Not a 3DO cel file.",
 				  gimp_filename_to_utf8 (cf->filename));
 				return -EINVAL;
 			}
-			first_chunk = 0;
+			seen_first_chunk = 1;
 		}
 
 		switch (ckhdr.ID) {
 		case CHUNK_CCB:
+			if (ctx->ci.ccc) {
+				free (ctx->ci.ccc);
+				ctx->ci.ccc = NULL;
+			}
 			if (e = read_chunk_CCC (&ctx->ci.ccc, &ckhdr, cf))
 				return e;
 			break;
 
 		case CHUNK_PLUT:
+			if (ctx->ci.plut) {
+				free (ctx->ci.plut);
+				ctx->ci.plut = NULL;
+			}
 			if (e = read_chunk_PLUT (&ctx->ci.plut, &ckhdr, cf))
 				return e;
 			break;
@@ -457,12 +488,24 @@ parse_file (struct decode_context *ctx, struct celfile *cf)
  			 * A successful load of PDAT means it's time to
  			 * start interpreting the cel data.
 			 */
+			if (ctx->ci.pdat) {
+				free (ctx->ci.pdat);
+				ctx->ci.pdat = NULL;
+			}
 			if (e = read_chunk_PDAT (&ctx->ci.pdat, &ckhdr, cf))
 				return e;
-			return 0;
+
+			if (e = decode_cel (ctx))
+				return e;
+
+			if (ctx->framenum)
+				++ctx->framenum;
+
 			break;
 
 		case CHUNK_XTRA:
+		case CHUNK_ANIM:
+			/*  No info in ANIM chunks we care about.  */
 		default:
 			if (e = skip_chunk_payload (&ckhdr, cf))
 				return e;
@@ -470,6 +513,132 @@ parse_file (struct decode_context *ctx, struct celfile *cf)
 		}
 	}
 	return e;
+}
+
+
+/***************************************************************************
+ * Pixel decoding.  This is actually a big pain in the neck.
+ */
+inline uint8_t
+convert_divide_field (uint8_t fieldval)
+{
+	switch (fieldval) {
+	case PPMPC_SF_16:	return 16;
+	case PPMPC_SF_2:	return 2;
+	case PPMPC_SF_4:	return 4;
+	case PPMPC_SF_8:	return 8;
+	}
+}
+
+void
+expand_pixel_coded (struct pxdata *pd, struct celinfo *ci, uint16_t val)
+{
+	uint16_t	val5;
+	uint16_t	plutval;
+	uint16_t	ppmp;
+	uint8_t		pluta;
+
+	pd->pel = val;
+
+	/*  Compose 5-bit index value.  */
+	val5 = val & 0x1F;
+	switch (ci->bpp) {
+	case 1:
+		val5 |= ci->pluta & 0x1E;
+		break;
+
+	case 2:
+		val5 |= ci->pluta & 0x1C;
+		break;
+
+	case 4:
+		val5 |= ci->pluta & 0x10;
+		break;
+
+	default:
+		break;
+	}
+
+	/*  Obtain the P value.  */
+	plutval = ci->plut->PLUT[val5];
+	switch (ci->bpp) {
+	case 1:
+	case 2:
+	case 4:
+		pd->p = (plutval & 0x8000) ? 1 : 0;
+		break;
+
+	case 6:
+		pd->p = (val & 0x20) ? 1 : 0;
+		break;
+
+	case 8:
+		pd->p = 0;
+		break;
+
+	case 16:
+		pd->p = (val & 0x8000) ? 1 : 0;
+		break;
+	}
+
+	ppmp = pd->p ?  ci->ccc->ccc_PPMP1 :  ci->ccc->ccc_PPMP0;
+
+	/*  Obtain Primary Multiply Value(s).  */
+	switch (FIELD2VAL (PPMPC, MS, ppmp)) {
+	case PPMPC_MS_CCB:
+		pd->mr = 
+		pd->mg = 
+		pd->mb = FIELD2VAL (PPMPC, MF, ppmp) + 1;
+		break;
+
+	case PPMPC_MS_PIN:
+		switch (ci->bpp) {
+		case 1:
+		case 2:
+		case 4:
+		case 6:
+			pd->mr =
+			pd->mg =
+			pd->mb = 1;
+			break;
+
+		case 8:
+			pd->mr =
+			pd->mg =
+			pd->mb = (val >> 5 & 0x7) + 1;
+			break;
+
+		case 16:
+			pd->mr = (val >> 11 & 0x7) + 1;
+			pd->mg = (val >>  8 & 0x7) + 1;
+			pd->mb = (val >>  5 & 0x7) + 1;
+			break;
+		}
+		break;
+
+	case PPMPC_MS_PDC:
+	case PPMPC_MS_PDC_MFONLY:
+		pd->mr = (plutval >> 10 & 0x7) + 1;
+		pd->mg = (plutval >>  5 & 0x7) + 1;
+		pd->mb = (plutval       & 0x7) + 1;
+		break;
+	}
+
+	/*  Obtain Primary Divide Value(s).  */
+	switch (FIELD2VAL (PPMPC, MS, ppmp)) {
+	case PPMPC_MS_CCB:
+	case PPMPC_MS_PIN:
+	case PPMPC_MS_PDC_MFONLY:
+		pd->dr =
+		pd->dg =
+		pd->db = convert_divide_field (FIELD2VAL (PPMPC, SF, ppmp));
+
+	case PPMPC_MS_PDC:
+		pd->dr = convert_divide_field (plutval >> 13 & 3);
+		pd->dg = convert_divide_field (plutval >>  8 & 3);
+		pd->db = convert_divide_field (plutval >>  3 & 3);
+		break;
+	}
 }
 
 
@@ -698,6 +867,10 @@ decode_packed (struct decode_context *ctx)
 }
 
 
+/*
+ * This routine is called when we have collected a valid CCB, PLUT, and PDAT
+ * chunk, and attached them to the celinfo.
+ */
 static int
 decode_cel (struct decode_context *ctx)
 {
@@ -705,9 +878,11 @@ decode_cel (struct decode_context *ctx)
 	GimpPixelRgn		pixel_rgn;
 	struct CCC_chunk	*ccc;
 	int			e;
+	gchar			*framename;
 
 	ccc = ctx->ci.ccc;
-	ctx->ci.packed = FIELD2VAL (CCB, PACKED, ccc->ccc_Flags);
+	ctx->ci.pluta	= FIELD2VAL (CCB, PLUTA, ccc->ccc_Flags) << 1;
+	ctx->ci.packed	= FIELD2VAL (CCB, PACKED, ccc->ccc_Flags);
 
 	init_chunkdata (&ctx->cd,
 	                ctx->ci.pdat->data,
@@ -817,13 +992,24 @@ decode_cel (struct decode_context *ctx)
 		ctx->pstore.img_type	= GIMP_RGBA_IMAGE;
 		ctx->pstore.nchan	= 4;
 	}
-	ctx->pstore.gimage = gimp_image_new (ctx->ci.width, ctx->ci.height,
-	                                     ctx->pstore.base_type);
-	ctx->pstore.glayer = gimp_layer_new (ctx->pstore.gimage, "Background",
-	                                     ctx->ci.width, ctx->ci.height,
-				             ctx->pstore.img_type, 100, GIMP_NORMAL_MODE);
 
-	gimp_image_set_filename (ctx->pstore.gimage, "filename");
+	if (!ctx->pstore.gimage) {
+		ctx->pstore.gimage = gimp_image_new (ctx->ci.width, ctx->ci.height,
+		                                     ctx->pstore.base_type);
+		gimp_image_set_filename (ctx->pstore.gimage, "filename");
+	}
+
+	if (ctx->framenum > 1) {
+printf ("Creating layer for frame %d\n", ctx->framenum);
+		framename = g_strdup_printf ("Frame %d", ctx->framenum);
+	} else {
+		framename = g_strdup_printf ("Background");
+	}
+	ctx->pstore.glayer = gimp_layer_new (ctx->pstore.gimage, framename,
+	                                     ctx->ci.width, ctx->ci.height,
+	                                     ctx->pstore.img_type, 100, GIMP_NORMAL_MODE);
+	g_free (framename);
+
 	gimp_image_insert_layer (ctx->pstore.gimage, ctx->pstore.glayer, -1, 0);
 
 	gdraw = gimp_drawable_get (ctx->pstore.glayer);
@@ -921,18 +1107,18 @@ read_cel (gchar const *name, GError **error)
 	if (e = parse_file (&dctx, &cf)) {
 		if (e != EOF) {
 			printf ("oops!\n");
-			return -1;
 		}
 	}
 	// dump_ccc_flags (dctx.ci.ccc);
 
-	e = decode_cel (&dctx);
-	if (e)
-		return -1;
+	// e = decode_cel (&dctx);
 
 	if (dctx.ci.ccc)	free (dctx.ci.ccc);
 	if (dctx.ci.plut)	free (dctx.ci.plut);
 	if (dctx.ci.pdat)	free (dctx.ci.pdat);
+
+	if (e  &&  e != EOF)
+		return -1;
 
 	return (dctx.pstore.gimage);
 }
@@ -974,6 +1160,10 @@ query (void)
 	                                  "",
 					  "",
 					  "0,string,CCB ");
+	gimp_register_magic_load_handler (LOAD_PROC,
+	                                  "",
+					  "",
+					  "0,string,ANIM");
 }
 
 static void
