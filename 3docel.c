@@ -79,6 +79,7 @@ typedef struct decode_context {
 	struct pstore_context	pstore;
 	GError			**error;
 	int			framenum;
+	int			frametime;	/*  Milliseconds.  */
 } decode_context;
 
 
@@ -436,9 +437,41 @@ struct celfile		*cf
 
 
 static int
+read_chunk_ANIM (
+struct ANIM_chunk	**cl_anim,
+struct chunk_header	*hdr,
+struct celfile		*cf
+)
+{
+	struct ANIM_chunk	*anim;
+	int			e;
+	uint8_t			*buf;
+
+	if (e = read_chunk_payload ((void **) &anim, hdr, cf)) {
+		if (e == -ENOMEM)
+			g_set_error (cf->error, G_FILE_ERROR, G_FILE_ERROR_FAILED,
+			             "Out of memory.");
+		return e;
+	}
+
+	/*  Convert fields to local representation.  */
+	anim->version		= be32toh (anim->version);
+	anim->animType		= be32toh (anim->animType);
+	anim->numFrames		= be32toh (anim->numFrames);
+	anim->frameRate		= be32toh (anim->frameRate);
+	anim->startFrame	= be32toh (anim->startFrame);
+	anim->numLoops		= be32toh (anim->numLoops);
+
+	*cl_anim = anim;
+	return 0;
+}
+
+
+static int
 parse_file (struct decode_context *ctx, struct celfile *cf)
 {
 	chunk_header	ckhdr;
+	ANIM_chunk	*anim;
 	int		e = 0;
 	uint8_t		*pdat;
 	uint8_t		seen_first_chunk = 0;
@@ -503,9 +536,15 @@ parse_file (struct decode_context *ctx, struct celfile *cf)
 
 			break;
 
-		case CHUNK_XTRA:
 		case CHUNK_ANIM:
-			/*  No info in ANIM chunks we care about.  */
+			/*  We're just picking up the frame rate for now.  */
+			if (e = read_chunk_ANIM (&anim, &ckhdr, cf))
+				return e;
+			ctx->frametime = anim->frameRate * 1000 / 60;
+			free (anim);
+			break;
+
+		case CHUNK_XTRA:
 		default:
 			if (e = skip_chunk_payload (&ckhdr, cf))
 				return e;
@@ -955,7 +994,14 @@ decode_cel (struct decode_context *ctx)
 	ctx->ci.height = FIELD2VAL (PRE0, VCNT, ctx->ci.PRE0)
 	               + PRE0_VCNT_PREFETCH;
 
-	if (ctx->ci.packed) {
+	if (ctx->framenum) {
+		/*
+		 * This is an ANIM.  The decoded dimensions of the first frame
+		 * may not be the dimensions of the frames overall.  So we
+		 * choose to believe the ccc_Width field in this case.
+		 */
+		ctx->ci.width = ccc->ccc_Width;
+	} else if (ctx->ci.packed) {
 		/*
  		 * Perform a preliminary scan of packed data to determine
 		 * what its actual width is (the ccc_Width field may be
@@ -1000,7 +1046,6 @@ decode_cel (struct decode_context *ctx)
 	}
 
 	if (ctx->framenum > 1) {
-printf ("Creating layer for frame %d\n", ctx->framenum);
 		framename = g_strdup_printf ("Frame %d", ctx->framenum);
 	} else {
 		framename = g_strdup_printf ("Background");

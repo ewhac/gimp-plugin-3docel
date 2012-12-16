@@ -206,27 +206,18 @@ typedef struct CCC_chunk {
 #define PRE1_TLHPCNT_PREFETCH		1
 
 
-/* === PPMPC control word flags === */
-/* You compose a PPMP value by building up PPMPC definitions and then
- * using the PPMP_0_SHIFT or PPMP_1_SHIFT values to build up the
- * value to be used for the CCB's PPMP
+/*
+ * === PPMPC control word flags ===
  */
-
-/* These define the shifts required to get your PPMPC value into either
- * the 0 half or the 1 half of the PPMP
- */
-#define	PPMP_0_SHIFT 0
-#define	PPMP_1_SHIFT 16
-
 #define	PPMPC_1S			15:15	//  0x00008000
 #define	PPMPC_1S_PDC			0	//   0x00000000
 #define	PPMPC_1S_CFBD			1	//  0x00008000
 
 #define	PPMPC_MS			14:13	//  0x00006000
-#define PPMPC_MS_CCB			0	//   0x00000000
-#define PPMPC_MS_PIN			1	//   0x00002000
-#define PPMPC_MS_PDC			2	//   0x00004000
-#define PPMPC_MS_PDC_MFONLY		3	//   0x00006000
+#define	PPMPC_MS_CCB			0	//   0x00000000
+#define	PPMPC_MS_PIN			1	//   0x00002000
+#define	PPMPC_MS_PDC			2	//   0x00004000
+#define	PPMPC_MS_PDC_MFONLY		3	//   0x00006000
 
 #define	PPMPC_MF			12:10	//  0x00001C00
 #define	PPMPC_MF_1			0	//   0x00000000
@@ -311,7 +302,7 @@ typedef struct loop_rec {
 	int32_t	repeatDelay;	/*  number of 1/60s of a sec to delay each time thru loop */
 } loop_rec;
 
-typedef struct anim_chunk {
+typedef struct ANIM_chunk {
 	chunk_header	header;		/*  ID = CHUNK_ANIM  */
 	int32_t		version;	/*  current version = 0 */
 	int32_t		animType;	/*  0 = multi-CCB ; 1 = single CCB	*/
@@ -320,7 +311,7 @@ typedef struct anim_chunk {
 	int32_t		startFrame; 	/*  the first frame in the anim. Can be non zero */
 	int32_t		numLoops;	/*  number of loops in loop array. Loops are executed serially */
 	loop_rec	loop[0];	/*  array of loop info. see numLoops */
-} anim_chunk;
+} ANIM_chunk;
 
 
 typedef struct PDAT_chunk {
