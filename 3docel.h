@@ -251,7 +251,7 @@ typedef struct CCC_chunk {
 #define	PPMPC_AVWRAP_CLIP		0
 #define	PPMPC_AVWRAP_WRAP		1
 
-#define	PPMPC_AV2SSEX			2:2	//  0x00000004	/*  Sign-EXtend, okay?  */
+#define	PPMPC_AV2SSEX			2:2	//  0x00000004	/*  Sign-EXtend  */
 #define	PPMPC_AV2SINVERT		1:1	//  0x00000002
 
 #define	PPMPC_2D			0:0	//  0x00000001
@@ -296,10 +296,10 @@ typedef struct PLUT_chunk {
 } PLUT_chunk;
 
 typedef struct loop_rec {
-	int32_t	loopStart;	/*  start frame for a loop in the animation */
-	int32_t	loopEnd;	/*  end frame for a loop in the animation */
-	int32_t	repeatCount;	/*  number of times to repeat the looped portion */
-	int32_t	repeatDelay;	/*  number of 1/60s of a sec to delay each time thru loop */
+	int32_t		loopStart;	/*  start frame for a loop in the animation */
+	int32_t		loopEnd;	/*  end frame for a loop in the animation */
+	int32_t		repeatCount;	/*  number of times to repeat the looped portion */
+	int32_t		repeatDelay;	/*  number of 1/60s of a sec to delay each time thru loop */
 } loop_rec;
 
 typedef struct ANIM_chunk {

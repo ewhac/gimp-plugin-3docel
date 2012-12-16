@@ -6,14 +6,17 @@ Written by Leo L. Schwab <ewhac AT ewhac.org>
 Description
 -----------
 
-	This is a plugin for The GIMP (v2.8) that loads cel files from the
-3DO video game console.  If you do not own a 3DO console or any 3DO titles,
-this plugin may not be of very much interest to you.
+	This is a plugin for The GIMP (v2.8) that loads cel files created
+for the 3DO video game console.  If you do not own a 3DO console or any 3DO
+titles, this plugin may not be of very much interest to you.
 
-	This is my first ever GIMP plugin/extension of any kind, so it's
-bound to be ugly to more experienced eyes.  As of this writing, the plugin
-is fairly limited and a bit flaky.  It has been built and tested only on an
-x86 laptop running Debian 'sid'.
+	As of this writing, this is still very much a work in progress.  The
+plugin is fairly limited and a bit flaky.  It has been built and tested only
+on an x86 laptop running Debian 'sid'.
+
+	This is my first ever GIMP plugin/extension of any kind.  There's a
+fair amount of cargo-cult programming (i.e. cut-and-paste from other
+plugins) going on here, so it's bound to be ugly to more experienced eyes.
 
 	Feel free to email me bug reports and suggestions for improvement.
 Management makes no representations as to when such reports will be acted
@@ -35,11 +38,11 @@ Building and Installation
 	To build and install the plugin to your local GIMP config folder,
 run the following command:
 
-bash$ gimptool-2.0 --install 3docel.c
+$ gimptool-2.0 --install 3docel.c
 
 	To just build (not install) the plugin, run the following command:
 
-bash$ gimptool-2.0 --build 3docel.c
+$ gimptool-2.0 --build 3docel.c
 
 	'gimptool' will invoke the compiler with all the appropriate command
 arguments, and (when using the --install argument) install the completed
@@ -54,7 +57,7 @@ Usage
 -----
 
 	Because 3DO cel files have no common filename extension (such as
-.CEL) -- and indeed frequently have no extension at all -- you will often
+'.CEL') -- and indeed frequently have no extension at all -- you will often
 have to force GIMP to use the plugin explicitly.  This may be done as
 follows in The GIMP v2.8:
 
