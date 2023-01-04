@@ -517,10 +517,6 @@ parse_file (struct decode_context *ctx, struct celfile *cf)
 			break;
 
 		case CHUNK_PDAT:
-			/*
- 			 * A successful load of PDAT means it's time to
- 			 * start interpreting the cel data.
-			 */
 			if (ctx->ci.pdat) {
 				free (ctx->ci.pdat);
 				ctx->ci.pdat = NULL;
@@ -528,11 +524,16 @@ parse_file (struct decode_context *ctx, struct celfile *cf)
 			if (e = read_chunk_PDAT (&ctx->ci.pdat, &ckhdr, cf))
 				return e;
 
-			if (e = decode_cel (ctx))
-				return e;
-
-			if (ctx->framenum)
+			if (ctx->framenum) {
+				/*
+				 * In an ANIM, a successful load of PDAT means
+				 * it's time to start interpreting the cel
+				 * data.
+				 */
+				if (e = decode_cel (ctx))
+					return e;
 				++ctx->framenum;
+			}
 
 			break;
 
@@ -551,6 +552,19 @@ parse_file (struct decode_context *ctx, struct celfile *cf)
 			break;
 		}
 	}
+
+	if (!ctx->framenum  &&  e == EOF) {
+		/*
+		 * Some (broken) cel files have the PLUT after the PDAT (I'm
+		 * looking at *you*, @burgerbecky).  If this is not an ANIM,
+		 * defer cel decoding until EOF when we (hopefully) have all
+		 * the chunks we need.
+		 */
+		int ed;
+
+		if (ed = decode_cel (ctx))
+			return ed;
+	}
 	return e;
 }
 
@@ -558,7 +572,7 @@ parse_file (struct decode_context *ctx, struct celfile *cf)
 /***************************************************************************
  * Pixel decoding.  This is actually a big pain in the neck.
  */
-inline uint8_t
+static inline uint8_t
 convert_divide_field (uint8_t fieldval)
 {
 	switch (fieldval) {
@@ -684,7 +698,7 @@ expand_pixel_coded (struct pxdata *pd, struct celinfo *ci, uint16_t val)
 /***************************************************************************
  * Pixel data storage, i.e. storing pixels to the destination buffer(s).
  */
-inline void
+static inline void
 pstore_set_curptr (
 struct pstore_context	*pctx,
 struct celinfo		*ci,
@@ -1192,7 +1206,7 @@ query (void)
 				"Loads 3DO cel format files",
 				"Leo L. Schwab",
 				"Leo L. Schwab",
-				"2012",
+				"2023",
 				"3DO cel image",
 				NULL,
 				GIMP_PLUGIN,
